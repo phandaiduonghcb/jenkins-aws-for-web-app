@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy a service on AWS Fargate, hosted in a public subnet, and accessible via a public load balancer.
+Parameters:
+  # StackName:
+  #   Type: String
+  #   Default: dev-ecs-stack
+  #   Description: The name of the parent Fargate networking stack that you created. Necessary
+  #                to locate and reference resources created by that stack.
+  # ClusterName:
+  #   Type: String
+  #   Default: DevCluster
+  #   Description: The name of the created cluster
+  # ServiceName:
+  #   Type: String
+  #   Default: dev-web-app-service
+  #   Description: A name for the service
+  # TaskDefinitionName:
+  #   Type: String
+  #   Default: dev-web-app-definition
+  #   Description: Task definition used to create the service
+  # ContainerPort:
+  #   Type: Number
+  #   Default: 80
+  #   Description: What port number the application inside the docker container is binding to
+  Path:
+    Type: String
+    Default: "*"
+    Description: A path on the public load balancer that this service
+                 should be connected to. Use * to send all load balancer
+                 traffic to this service.
+  Priority:
+    Type: Number
+    Default: 1
+    Description: The priority for the routing rule added to the load balancer.
+                 This only applies if your have multiple services which have been
+                 assigned to different paths on the load balancer.
+  # DesiredCount:
+  #   Type: Number
+  #   Default: 1
+  #   Description: How many copies of the service task to run
+
+Resources:
+  # The service. The service is a resource which allows you to run multiple
+  # copies of a type of task, and gather up their logs and metrics, as well
+  # as monitor the number of running tasks and replace any that have crashed
+  # Service:
+  #   Type: AWS::ECS::Service
+  #   DependsOn: LoadBalancerRule
+  #   Properties:
+  #     ServiceName: !Ref 'ServiceName'
+  #     Cluster: !Ref ClusterName
+  #     LaunchType: FARGATE
+  #     DeploymentConfiguration:
+  #       MaximumPercent: 200
+  #       MinimumHealthyPercent: 100
+  #     DesiredCount: !Ref 'DesiredCount'
+  #     NetworkConfiguration:
+  #       AwsvpcConfiguration:
+  #         AssignPublicIp: ENABLED
+  #         SecurityGroups:
+  #           - sg-04741693a6494256c
+  #         Subnets:
+  #           - subnet-0344d44130e11b79c
+  #           - subnet-0de56d1e9c2d97060
+  #           - subnet-02bbfe46ba29ce20a
+  #     TaskDefinition: !Ref 'TaskDefinitionName'
+  #     LoadBalancers:
+  #       - ContainerName: !Ref 'ServiceName'
+  #         ContainerPort: !Ref 'ContainerPort'
+  #         TargetGroupArn: !Ref 'TargetGroup'
+
+  # A target group. This is used for keeping track of all the tasks, and
+  # what IP addresses / port numbers they have. You can query it yourself,
+  # to use the addresses yourself, but most often this target group is just
+  # connected to an application load balancer, or network load balancer, so
+  # it can automatically distribute traffic across all the targets.
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      TargetType: ip
+      Name: !Join [ "-", [!Ref AWS::StackName, 'tg'] ]
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: vpc-046ad6577b5ca5cfe
+
+  # Create a rule on the load balancer for routing traffic to the target group
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn: 
+      - TargetGroup
+      - LoadBalancer
+    Properties: 
+      DefaultActions: 
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      IpAddressType: ipv4
+      Name: !Join [ "-", [!Ref AWS::StackName, 'bl'] ]
+      Scheme: internet-facing
+      SecurityGroups: 
+        - sg-04741693a6494256c
+      Subnets: 
+        - subnet-0344d44130e11b79c
+        - subnet-0de56d1e9c2d97060
+        - subnet-02bbfe46ba29ce20a
+
+  # LoadBalancerRule:
+  #   Type: AWS::ElasticLoadBalancingV2::ListenerRule
+  #   DependsOn: 
+  #     - TargetGroup
+  #     - Listener
+  #   Properties:
+  #     Actions:
+  #       - TargetGroupArn: !Ref 'TargetGroup'
+  #         Type: 'forward'
+  #     Conditions:
+  #       - Field: path-pattern
+  #         Values: [!Ref 'Path']
+  #     ListenerArn: !Ref 'Listener'
+  #     Priority: !Ref 'Priority'
+
+Outputs:
+  LoadBalancerDNS:
+    Description: The DNS of the Elastic Load Balancer of the web app
+    Value: !GetAtt LoadBalancer.DNSName
+  LoadBalancerFullName:
+    Description: The LoadBalancerFullName of the Elastic Load Balancer of the web app
+    Value: !GetAtt LoadBalancer.LoadBalancerFullName
+  TargetGroupArn:
+    Description: The TargetGroupArn of the Target group
+    Value: !GetAtt TargetGroup.TargetGroupArn

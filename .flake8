@@ -1,0 +1,13 @@
+[flake8]
+# ignore some error codes
+# ignore = E203, E266, E501, W503, F401
+# set the maximum line length to 88 characters
+max-line-length = 88
+# set the maximum complexity score to 10
+max-complexity = 10
+# exclude files and directories from analysis
+exclude =
+    .git,
+    .venv,
+    *test_*,
+    __pycache__
